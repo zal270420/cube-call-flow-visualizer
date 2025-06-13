@@ -271,7 +271,7 @@ function App() {
     };
     flowSteps.push({
       type: "inbound",
-      message: `⬇️ Inbound DP: ${ingressDp.id} (${ingressDp.description})`,
+      message: `⬇️ Inbound DP: <span class="math-inline">\{ingressDp\.id\} \(</span>{ingressDp.description})`,
     });
 
     // --- Step 2: Identify Outbound Dial-Peer ---
@@ -386,12 +386,12 @@ function App() {
                 };
                 flowSteps.push({
                   type: "translation_cdpn",
-                  message: `🔄 CDPN Translated (${tp.type} leg) by "${tp.profile}" (rule ${profile.rule}). Old: ${oldNum} ➡️ New: ${newNum}`,
+                  message: `🔄 CDPN Translated (<span class="math-inline">\{tp\.type\} leg\) by "</span>{tp.profile}" (rule ${profile.rule}). Old: ${oldNum} ➡️ New: ${newNum}`,
                 });
               } else {
                 flowSteps.push({
                   type: "info",
-                  message: `ℹ️ No CDPN translation by "${tp.profile}" (${tp.type} leg).`,
+                  message: `ℹ️ No CDPN translation by "<span class="math-inline">\{tp\.profile\}" \(</span>{tp.type} leg).`,
                 });
               }
             } else if (targetType === "calling") {
@@ -406,12 +406,12 @@ function App() {
                 };
                 flowSteps.push({
                   type: "translation_cpn",
-                  message: `🔄 CPN Translated (${tp.type} leg) by "${tp.profile}" (rule ${profile.rule}). Old: ${oldNum} ➡️ New: ${newNum}`,
+                  message: `🔄 CPN Translated (<span class="math-inline">\{tp\.type\} leg\) by "</span>{tp.profile}" (rule ${profile.rule}). Old: ${oldNum} ➡️ New: ${newNum}`,
                 });
               } else {
                 flowSteps.push({
                   type: "info",
-                  message: `ℹ️ No CPN translation by "${tp.profile}" (${tp.type} leg).`,
+                  message: `ℹ️ No CPN translation by "<span class="math-inline">\{tp\.profile\}" \(</span>{tp.type} leg).`,
                 });
               }
             }
