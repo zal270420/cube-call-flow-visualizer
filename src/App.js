@@ -1,7 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react"; // Import useEffect
 
-// Simplified CUBE Configuration Data (based on your 'show run' and previous updates)
-// This data drives the simulation logic.
+// Simplified CUBE Configuration Data (aligned with your latest 'show run' and new strategy)
 const cubeConfig = {
   uriClasses: {
     ZOOM: ["144.195.121.212", "206.247.121.212"],
@@ -12,7 +11,7 @@ const cubeConfig = {
     101: /^301\d{3}$/, // Matches 301 followed by any 3 digits for CUCM internal
     201: /^101\d{3}$/, // Matches 101 followed by any 3 digits for Zoom internal
     110: /^\+1[2-9]\d{2}[2-9]\d{6}$/, // Standard NA 10-digit E.164 (e.g., +14085551234)
-    210: /^\+1[2-9]\d{2}[2-9]\d{6}$/, // Standard NA 10-digit E.164 (same as 110, for CUCM outbound)
+    210: /^\+1[2-9]\d{2}[2-9]\d{6}$/, // Kept as distinct pattern for now, but behavior matches 110
     301: /^\+1620555\d{4}$/, // Matches +1620555XXXX for Zoom DIDs
     302: /^\+13035553\d{3}$/, // Matches +13035553XXX for CUCM DIDs
   },
@@ -45,9 +44,9 @@ const cubeConfig = {
       type: "outbound",
       destinationE164PatternMap: "101",
       sipTenant: 200,
-      oksProfile: 200, // Corrected from 100 to 200 based on description (CUCM tenant)
+      oksProfile: 200,
       translationProfiles: [
-        { type: "outgoing", profile: "OUT_ZOOM_TO_CUCM_CPN" }, // Applied to calling number for CUCM display
+        { type: "outgoing", profile: "OUT_ZOOM_TO_CUCM_CPN" },
       ],
     },
     {
@@ -56,7 +55,7 @@ const cubeConfig = {
       type: "outbound",
       destinationE164PatternMap: "110",
       sipTenant: 300,
-      oksProfile: 300, // ITSP tenant
+      oksProfile: 300,
     },
     {
       id: 2000,
@@ -74,15 +73,15 @@ const cubeConfig = {
       sipTenant: 100,
       oksProfile: 100,
       rtpSrtp: true,
-      transportTls: true, // Zoom tenant
+      transportTls: true,
     },
     {
       id: 2100,
       description: "OUT_CUCM_TO_ITSP (CUCM 301XXX to PSTN)",
       type: "outbound",
-      destinationE164PatternMap: "110", // Destination is 110 (PSTN E.164)
+      destinationE164PatternMap: "110",
       sipTenant: 300,
-      oksProfile: 300, // ITSP tenant
+      oksProfile: 300,
       translationProfiles: [{ type: "outgoing", profile: "OUT_CUCM_TO_PSTN" }],
     },
     {
@@ -97,20 +96,20 @@ const cubeConfig = {
       id: 3010,
       description: "IN_ITSP_TO_ZOOM (PSTN DID to Zoom 101XXX)",
       type: "outbound",
-      incomingCalledNumberMatch: /^\+1620555\d{4}$/, // Matches specific DID range for Zoom
+      incomingCalledNumberMatch: /^\+1620555\d{4}$/,
       sipTenant: 100,
       oksProfile: 100,
       rtpSrtp: true,
-      transportTls: true, // Routing to Zoom, so SRTP/TLS applies here
+      transportTls: true,
       translationProfiles: [{ type: "outgoing", profile: "IN_PSTN_TO_ZOOM" }],
     },
     {
       id: 3020,
       description: "IN_ITSP_TO_CUCM (PSTN DID to CUCM 301XXX)",
       type: "outbound",
-      incomingCalledNumberMatch: /^\+13035553\d{3}$/, // Matches specific DID range for CUCM
+      incomingCalledNumberMatch: /^\+13035553\d{3}$/,
       sipTenant: 200,
-      oksProfile: 200, // CUCM tenant
+      oksProfile: 200,
       translationProfiles: [{ type: "outgoing", profile: "IN_PSTN_TO_CUCM" }],
     },
   ],
@@ -169,7 +168,6 @@ const callingPlanMatrixData = [
     cubePath: "IN_CUCM_TO_CUBE (2000) ➡️ OUT_CUCM_TO_ITSP (2100)",
     status: "Success",
   },
-  // Corrected the duplicate keys in the last entry
   {
     id: 6,
     callingPlatform: "PSTN (ITSP)",
@@ -185,7 +183,6 @@ const callingPlanMatrixData = [
 function applyTranslation(number, ruleId) {
   const rule = cubeConfig.translationRules[ruleId];
   if (!rule) {
-    // console.warn(`Translation rule ${ruleId} not found. Returning original number.`);
     return number;
   }
   const regex = rule.pattern;
@@ -195,13 +192,13 @@ function applyTranslation(number, ruleId) {
 function App() {
   const [cpn, setCpn] = useState("");
   const [cdpn, setCdpn] = useState("");
-  const [originatingSystem, setOriginatingSystem] = useState("Zoom Phone"); // Default to Zoom Phone
+  const [originatingSystem, setOriginatingSystem] = useState("Zoom Phone");
   const [callFlow, setCallFlow] = useState([]);
   const [errorMessage, setErrorMessage] = useState("");
-  const [visualFlowData, setVisualFlowData] = useState(null); // Separate state for visual flow
+  const [visualFlowData, setVisualFlowData] = useState(null);
 
   // Set default input values based on the initial originatingSystem
-  React.useEffect(() => {
+  useEffect(() => {
     if (originatingSystem === "Zoom Phone") {
       setCpn("+16205558080"); // Zoom to PSTN default CPN
       setCdpn("+1234567890"); // Generic PSTN CDPN
@@ -217,15 +214,15 @@ function App() {
   const simulateCall = () => {
     setCallFlow([]);
     setErrorMessage("");
-    setVisualFlowData(null); // Reset visual flow
+    setVisualFlowData(null);
 
     let currentCpn = cpn;
     let currentCdpn = cdpn;
-    const flowSteps = []; // For detailed textual steps
+    const flowSteps = [];
 
     let currentVisualFlowData = {
       callingPlatformName: originatingSystem,
-      calledPlatformName: "Unknown", // Will be determined by outbound DP
+      calledPlatformName: "Unknown",
       initialCallingNumber: cpn,
       initialCalledNumber: cdpn,
       inboundDp: null,
@@ -277,8 +274,8 @@ function App() {
     currentVisualFlowData.inboundDp = {
       id: ingressDp.id,
       description: ingressDp.description,
-      cpn: currentCpn, // CPN at ingress
-      cdpn: currentCdpn, // CDPN at ingress
+      cpn: currentCpn,
+      cdpn: currentCdpn,
       transportTls: ingressDp.transportTls,
       rtpSrtp: ingressDp.rtpSrtp,
     };
@@ -294,7 +291,6 @@ function App() {
     );
 
     if (originatingSystem === "PSTN (ITSP)") {
-      // For ITSP inbound calls, the "outbound" DP is matched by `incomingCalledNumberRegex`
       const sortedItspDps = possibleOutboundDps
         .filter(
           (dp) =>
@@ -305,16 +301,14 @@ function App() {
           (a, b) =>
             b.incomingCalledNumberMatch.source.length -
             a.incomingCalledNumberMatch.source.length
-        ); // Prioritize more specific regex
+        );
       outboundDp = sortedItspDps[0];
-
       if (sortedItspDps.length > 1) {
         const warnMsg = `⚠️ Multiple inbound/outbound DPs matched for PSTN (ITSP) incoming. Selected ${outboundDp.id}.`;
         flowSteps.push({ type: "warning", message: warnMsg });
         currentVisualFlowData.warning = warnMsg;
       }
     } else {
-      // For Zoom/CUCM internal or outbound calls, match destination e164 pattern map
       const sortedOutboundDps = possibleOutboundDps
         .filter(
           (dp) =>
@@ -332,17 +326,11 @@ function App() {
               .length
         );
 
-      // Apply a preference for dial-peers based on originating system if multiple DPs match the CDPN.
-      // This simulates COR or implicit preference based on ingress origin.
       if (originatingSystem === "Zoom Phone") {
-        // For Zoom to PSTN, prioritize DP 1100.
-        // This assumes the CPN from Zoom is in the expected +E.164 format and doesn't need translation,
-        // allowing DP 1100 to be matched by its destination pattern map.
         outboundDp =
           sortedOutboundDps.find((dp) => dp.id === 1100) ||
           sortedOutboundDps[0];
       } else if (originatingSystem === "CUCM") {
-        // For CUCM to PSTN, prioritize DP 2100.
         outboundDp =
           sortedOutboundDps.find((dp) => dp.id === 2100) ||
           sortedOutboundDps[0];
@@ -367,7 +355,6 @@ function App() {
       return;
     }
 
-    // Determine target platform for visualization
     if (outboundDp.description.includes("CUCM"))
       currentVisualFlowData.calledPlatformName = "CUCM";
     else if (outboundDp.description.includes("Zoom"))
@@ -383,6 +370,9 @@ function App() {
     let cpnTranslatedRecord = null;
     let cdpnTranslatedRecord = null;
 
+    let cpnAtEgress = currentCpn; // Track CPN after translations
+    let cdpnAtEgress = currentCdpn; // Track CDPN after translations
+
     if (outboundDp.translationProfiles) {
       for (const tp of outboundDp.translationProfiles) {
         const profile = cubeConfig.translationProfiles[tp.profile];
@@ -394,10 +384,10 @@ function App() {
             let targetType = profile.target;
 
             if (targetType === "called") {
-              oldNum = currentCdpn;
-              newNum = applyTranslation(currentCdpn, profile.rule);
-              currentCdpn = newNum;
+              oldNum = cdpnAtEgress;
+              newNum = applyTranslation(cdpnAtEgress, profile.rule);
               if (oldNum !== newNum) {
+                cdpnAtEgress = newNum;
                 cdpnTranslatedRecord = {
                   original: oldNum,
                   translated: newNum,
@@ -414,10 +404,10 @@ function App() {
                 });
               }
             } else if (targetType === "calling") {
-              oldNum = currentCpn;
-              newNum = applyTranslation(currentCpn, profile.rule);
-              currentCpn = newNum;
+              oldNum = cpnAtEgress;
+              newNum = applyTranslation(cpnAtEgress, profile.rule);
               if (oldNum !== newNum) {
+                cpnAtEgress = newNum;
                 cpnTranslatedRecord = {
                   original: oldNum,
                   translated: newNum,
@@ -445,18 +435,23 @@ function App() {
     currentVisualFlowData.outboundDp = {
       id: outboundDp.id,
       description: outboundDp.description,
-      cpn: currentCpn, // CPN as it leaves CUBE
-      cdpn: currentCdpn, // CDPN as it leaves CUBE
+      cpn: cpnAtEgress,
+      cdpn: cdpnAtEgress,
       transportTls: outboundDp.transportTls,
       rtpSrtp: outboundDp.rtpSrtp,
     };
     flowSteps.push({
-      type: "final",
-      message: `🏁 Final Call State: CPN: ${currentCpn} 📞, CDPN: ${currentCdpn} ☎️`,
+      type: "outbound",
+      message: `⬆️ Outbound DP: ${outboundDp.id} (${outboundDp.description})`,
     });
 
-    currentVisualFlowData.finalCallingNumber = currentCpn;
-    currentVisualFlowData.finalCalledNumber = currentCdpn;
+    flowSteps.push({
+      type: "final",
+      message: `🏁 Final Call State: CPN: ${cpnAtEgress} 📞, CDPN: ${cdpnAtEgress} ☎️`,
+    });
+
+    currentVisualFlowData.finalCallingNumber = cpnAtEgress;
+    currentVisualFlowData.finalCalledNumber = cdpnAtEgress;
 
     setCallFlow(flowSteps);
     setVisualFlowData(currentVisualFlowData);
@@ -464,6 +459,143 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 sm:p-6 lg:p-8 font-sans antialiased text-gray-800">
+      {/* Tailwind CSS CDN and Font Link - typically in index.html for React apps */}
+      {/* <script src="https://cdn.tailwindcss.com"></script> */}
+      {/* <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" /> */}
+
+      <style>
+        {`
+        body { font-family: 'Inter', sans-serif; }
+        .flow-box {
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.5rem;
+            border: 1px solid;
+            text-align: center;
+            min-width: 200px;
+            max-width: 280px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            transition: all 0.3s ease-in-out;
+            flex-shrink: 0;
+        }
+        .flow-arrow {
+            font-size: 1.5rem;
+            color: #60a5fa; /* blue-400 */
+            margin: auto 0.5rem; /* Center vertically, add horizontal margin */
+            text-align: center;
+            flex-shrink: 0;
+        }
+        /* Consistency with React version */
+        button {
+            min-height: 44px; /* Recommended minimum touch target size */
+            min-width: 44px;
+        }
+        input[type="text"] {
+            min-height: 44px; /* Ensure input fields are also large enough */
+        }
+        table {
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #e2e8f0;
+        }
+        .header-title {
+            text-align: center;
+            font-size: 2.25rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 1.5rem;
+        }
+        .header-description {
+            text-align: center;
+            color: #4b5563;
+            margin-bottom: 1.5rem;
+        }
+        .input-group {
+            margin-bottom: 1.5rem;
+        }
+        .label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #374151;
+            margin-bottom: 0.5rem;
+        }
+        .select, .input-text {
+            display: block;
+            width: 100%;
+            padding-left: 0.75rem;
+            padding-right: 2.5rem;
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            font-size: 0.875rem;
+            color: #1f2937;
+            background-color: white;
+            transition: all 0.2s ease-in-out;
+        }
+        .select:focus, .input-text:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+            border-color: #3b82f6;
+        }
+        .simulate-button {
+            padding: 0.75rem 1.5rem;
+            background-color: #2563eb;
+            color: white;
+            font-weight: 600;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transition: all 0.2s ease-in-out;
+        }
+        .simulate-button:hover {
+            background-color: #1d4ed8;
+        }
+        .simulate-button:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5), 0 0 0 4px rgba(59, 130, 246, 0.2);
+        }
+        .main-card {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            max-width: 4xl;
+            margin-bottom: 2rem;
+            border: 1px solid #e5e7eb;
+        }
+        .results-card {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            width: 100%;
+            max-width: 6xl;
+            margin-top: 2rem;
+            border: 1px solid #e5e7eb;
+        }
+        .results-title {
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 1.5rem;
+        }
+        .error-message {
+            background-color: #fee2e2;
+            border: 1px solid #ef4444;
+            color: #ef4444;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            margin-top: 1rem;
+            font-weight: 600;
+            text-align: center;
+        }
+        `}
+      </style>
+
       <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-lg p-6 sm:p-8 border border-gray-200">
         <h1 className="text-3xl sm:text-4xl font-extrabold text-blue-800 mb-6 text-center">
           CUBE Call Flow Simulator 📞
@@ -507,75 +639,101 @@ function App() {
                   scope="col"
                   className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  Scenario #
+                  Scenario
                 </th>
                 <th
                   scope="col"
                   className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  Calling Platform
+                  Calling Party (CPN)
                 </th>
                 <th
                   scope="col"
                   className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  Called Platform
+                  Called Party (CDPN)
                 </th>
                 <th
                   scope="col"
                   className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  Calling Number (Example)
+                  CUBE Ingress DP
                 </th>
                 <th
                   scope="col"
                   className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  Called Number (Example)
+                  CUBE Egress DP
                 </th>
                 <th
                   scope="col"
                   className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  Description & Path
+                  CPN at CUBE Egress
                 </th>
                 <th
                   scope="col"
                   className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  Status
+                  CDPN at CUBE Egress
+                </th>
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
+                  Expected Result
+                </th>
+                <th
+                  scope="col"
+                  className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
+                  Notes on Formatting
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {callingPlanMatrixData.map((scenario) => (
-                <tr key={scenario.id}>
-                  <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {scenario.id}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-700">
-                    {scenario.callingPlatform}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-700">
-                    {scenario.calledPlatform}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-700">
-                    {scenario.callingNumber}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-700">
-                    {scenario.calledNumber}
-                  </td>
-                  <td className="px-3 py-2 text-sm text-gray-700">
-                    {scenario.description} <br />{" "}
-                    <span className="font-mono text-gray-600 text-xs">
-                      {scenario.cubePath}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-sm text-green-600 font-semibold">
-                    {scenario.status} ✔️
-                  </td>
-                </tr>
-              ))}
+              {callingPlanMatrixData.map((scenario) => {
+                // Extract Ingress and Egress DP IDs from cubePath string
+                const pathParts = scenario.cubePath.match(/\((\d+)\)/g);
+                const ingressDp =
+                  pathParts && pathParts[0]
+                    ? pathParts[0].replace(/[\(\)]/g, "")
+                    : "N/A";
+                const egressDp =
+                  pathParts && pathParts[1]
+                    ? pathParts[1].replace(/[\(\)]/g, "")
+                    : "N/A";
+
+                return (
+                  <tr key={scenario.id}>
+                    <td className="px-3 py-2 text-sm text-gray-700">
+                      {scenario.id}. {scenario.description}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-700">
+                      {scenario.callingNumber}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-700">
+                      {scenario.calledNumber}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-700">
+                      {ingressDp}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-700">
+                      {egressDp}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-700">
+                      Simulated by CUBE
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-700">
+                      Simulated by CUBE
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm text-green-600 font-semibold">
+                      {scenario.status}
+                    </td>
+                    <td className="px-3 py-2 text-sm text-gray-700">N/A</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -862,24 +1020,6 @@ function App() {
           </div>
         </div>
       </div>
-      <style>{`
-          .flow-box {
-              padding: 0.75rem 1.25rem;
-              border-radius: 0.5rem;
-              border: 1px solid;
-              text-align: center;
-              width: 100%;
-              max-width: 280px;
-              box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-              transition: all 0.3s ease-in-out;
-          }
-          .flow-arrow {
-              font-size: 1.5rem;
-              color: #60a5fa; /* blue-400 */
-              margin: 0.5rem 0;
-              text-align: center;
-          }
-      `}</style>
     </div>
   );
 }
