@@ -1,15 +1,15 @@
 {
   "files": {
     "main.css": "/cube-call-flow-visualizer/static/css/main.e6c13ad2.css",
-    "main.js": "/cube-call-flow-visualizer/static/js/main.04adb646.js",
+    "main.js": "/cube-call-flow-visualizer/static/js/main.1abd5ce2.js",
     "static/js/453.d26541eb.chunk.js": "/cube-call-flow-visualizer/static/js/453.d26541eb.chunk.js",
     "index.html": "/cube-call-flow-visualizer/index.html",
     "main.e6c13ad2.css.map": "/cube-call-flow-visualizer/static/css/main.e6c13ad2.css.map",
-    "main.04adb646.js.map": "/cube-call-flow-visualizer/static/js/main.04adb646.js.map",
+    "main.1abd5ce2.js.map": "/cube-call-flow-visualizer/static/js/main.1abd5ce2.js.map",
     "453.d26541eb.chunk.js.map": "/cube-call-flow-visualizer/static/js/453.d26541eb.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.e6c13ad2.css",
-    "static/js/main.04adb646.js"
+    "static/js/main.1abd5ce2.js"
   ]
 }
