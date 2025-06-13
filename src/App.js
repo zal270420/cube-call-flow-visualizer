@@ -27,8 +27,6 @@ const cubeConfig = {
     IN_PSTN_TO_ZOOM: { target: "called", rule: "301" },
     OUT_CUCM_TO_PSTN: { target: "calling", rule: "210" },
     OUT_ZOOM_TO_CUCM_CPN: { target: "calling", rule: "105" },
-    // No explicit pass-through rules (110, 210 in original context) or strip rules (102, 202) provided in the new config.
-    // Assuming implicit pass-through if no matching translation is found, and simplified stripping is handled by new rules.
   },
   dialPeers: [
     {
@@ -103,7 +101,7 @@ const cubeConfig = {
       sipTenant: 100,
       oksProfile: 100,
       rtpSrtp: true,
-      transportTls: true, // Zoom tenant
+      transportTls: true, // Routing to Zoom, so SRTP/TLS applies here
       translationProfiles: [{ type: "outgoing", profile: "IN_PSTN_TO_ZOOM" }],
     },
     {
@@ -171,6 +169,7 @@ const callingPlanMatrixData = [
     cubePath: "IN_CUCM_TO_CUBE (2000) ➡️ OUT_CUCM_TO_ITSP (2100)",
     status: "Success",
   },
+  // Corrected the duplicate keys in the last entry
   {
     id: 6,
     callingPlatform: "PSTN (ITSP)",
@@ -189,17 +188,31 @@ function applyTranslation(number, ruleId) {
     // console.warn(`Translation rule ${ruleId} not found. Returning original number.`);
     return number;
   }
-  const regex = new RegExp(rule.pattern);
+  const regex = rule.pattern;
   return number.replace(regex, rule.replace);
 }
 
 function App() {
-  const [cpn, setCpn] = useState("+16205558080"); // Default for Zoom to PSTN scenario
-  const [cdpn, setCdpn] = useState("+1234567890"); // Default for Zoom to PSTN scenario
+  const [cpn, setCpn] = useState("");
+  const [cdpn, setCdpn] = useState("");
   const [originatingSystem, setOriginatingSystem] = useState("Zoom Phone"); // Default to Zoom Phone
   const [callFlow, setCallFlow] = useState([]);
   const [errorMessage, setErrorMessage] = useState("");
   const [visualFlowData, setVisualFlowData] = useState(null); // Separate state for visual flow
+
+  // Set default input values based on the initial originatingSystem
+  React.useEffect(() => {
+    if (originatingSystem === "Zoom Phone") {
+      setCpn("+16205558080"); // Zoom to PSTN default CPN
+      setCdpn("+1234567890"); // Generic PSTN CDPN
+    } else if (originatingSystem === "CUCM") {
+      setCpn("301001"); // CUCM to Zoom default CPN
+      setCdpn("101001"); // Zoom extension CDPN
+    } else if (originatingSystem === "PSTN (ITSP)") {
+      setCpn("+1234567890"); // Generic PSTN CPN
+      setCdpn("+16205558080"); // PSTN to Zoom DID
+    }
+  }, [originatingSystem]); // Re-run when originatingSystem changes
 
   const simulateCall = () => {
     setCallFlow([]);
@@ -271,7 +284,7 @@ function App() {
     };
     flowSteps.push({
       type: "inbound",
-      message: `⬇️ Inbound DP: <span class="math-inline">\{ingressDp\.id\} \(</span>{ingressDp.description})`,
+      message: `⬇️ Inbound DP: ${ingressDp.id} (${ingressDp.description})`,
     });
 
     // --- Step 2: Identify Outbound Dial-Peer ---
@@ -281,8 +294,7 @@ function App() {
     );
 
     if (originatingSystem === "PSTN (ITSP)") {
-      // For ITSP inbound calls, the "outbound" DP is matched by `incomingCalledNumberMatch`
-      // We prioritize more specific regexes (longer patterns)
+      // For ITSP inbound calls, the "outbound" DP is matched by `incomingCalledNumberRegex`
       const sortedItspDps = possibleOutboundDps
         .filter(
           (dp) =>
@@ -293,17 +305,16 @@ function App() {
           (a, b) =>
             b.incomingCalledNumberMatch.source.length -
             a.incomingCalledNumberMatch.source.length
-        );
-
+        ); // Prioritize more specific regex
       outboundDp = sortedItspDps[0];
+
       if (sortedItspDps.length > 1) {
         const warnMsg = `⚠️ Multiple inbound/outbound DPs matched for PSTN (ITSP) incoming. Selected ${outboundDp.id}.`;
         flowSteps.push({ type: "warning", message: warnMsg });
         currentVisualFlowData.warning = warnMsg;
       }
     } else {
-      // For Zoom/CUCM internal or outbound calls, match `destinationE164PatternMap`
-      // Prioritize more specific patterns
+      // For Zoom/CUCM internal or outbound calls, match destination e164 pattern map
       const sortedOutboundDps = possibleOutboundDps
         .filter(
           (dp) =>
@@ -324,23 +335,31 @@ function App() {
       // Apply a preference for dial-peers based on originating system if multiple DPs match the CDPN.
       // This simulates COR or implicit preference based on ingress origin.
       if (originatingSystem === "Zoom Phone") {
-        // Prioritize DP 1100 (OUT_ZOOM_TO_ITSP) for PSTN calls if from Zoom
+        // For Zoom to PSTN, prioritize DP 1100.
+        // This assumes the CPN from Zoom is in the expected +E.164 format and doesn't need translation,
+        // allowing DP 1100 to be matched by its destination pattern map.
         outboundDp =
           sortedOutboundDps.find((dp) => dp.id === 1100) ||
           sortedOutboundDps[0];
       } else if (originatingSystem === "CUCM") {
-        // Prioritize DP 2100 (OUT_CUCM_TO_ITSP) for PSTN calls if from CUCM
+        // For CUCM to PSTN, prioritize DP 2100.
         outboundDp =
           sortedOutboundDps.find((dp) => dp.id === 2100) ||
           sortedOutboundDps[0];
       } else {
         outboundDp = sortedOutboundDps[0];
       }
+
+      if (sortedOutboundDps.length > 1) {
+        const warnMsg = `⚠️ Multiple outbound DPs matched for ${originatingSystem} outgoing. Selected ${outboundDp.id}.`;
+        flowSteps.push({ type: "warning", message: warnMsg });
+        currentVisualFlowData.warning = warnMsg;
+      }
     }
 
     if (!outboundDp) {
       const msg =
-        "🚫 No matching Outbound Dial-Peer found for the Called Number after ingress processing.";
+        "🚫 No matching Outbound Dial-Peer found for the Called Number after ingress processing. Check CDPN and routing patterns.";
       setErrorMessage(msg);
       currentVisualFlowData.error = msg;
       flowSteps.push({ type: "error", message: msg });
@@ -386,12 +405,12 @@ function App() {
                 };
                 flowSteps.push({
                   type: "translation_cdpn",
-                  message: `🔄 CDPN Translated (<span class="math-inline">\{tp\.type\} leg\) by "</span>{tp.profile}" (rule ${profile.rule}). Old: ${oldNum} ➡️ New: ${newNum}`,
+                  message: `🔄 CDPN Translated (${tp.type} leg) by "${tp.profile}" (rule ${profile.rule}). Old: ${oldNum} ➡️ New: ${newNum}`,
                 });
               } else {
                 flowSteps.push({
                   type: "info",
-                  message: `ℹ️ No CDPN translation by "<span class="math-inline">\{tp\.profile\}" \(</span>{tp.type} leg).`,
+                  message: `ℹ️ No CDPN translation by "${tp.profile}" (${tp.type} leg).`,
                 });
               }
             } else if (targetType === "calling") {
@@ -406,12 +425,12 @@ function App() {
                 };
                 flowSteps.push({
                   type: "translation_cpn",
-                  message: `🔄 CPN Translated (<span class="math-inline">\{tp\.type\} leg\) by "</span>{tp.profile}" (rule ${profile.rule}). Old: ${oldNum} ➡️ New: ${newNum}`,
+                  message: `🔄 CPN Translated (${tp.type} leg) by "${tp.profile}" (rule ${profile.rule}). Old: ${oldNum} ➡️ New: ${newNum}`,
                 });
               } else {
                 flowSteps.push({
                   type: "info",
-                  message: `ℹ️ No CPN translation by "<span class="math-inline">\{tp\.profile\}" \(</span>{tp.type} leg).`,
+                  message: `ℹ️ No CPN translation by "${tp.profile}" (${tp.type} leg).`,
                 });
               }
             }
@@ -581,17 +600,6 @@ function App() {
                   value={originatingSystem}
                   onChange={(e) => {
                     setOriginatingSystem(e.target.value);
-                    // Update default CPN/CDPN based on selected system for convenience
-                    if (e.target.value === "Zoom Phone") {
-                      setCpn("+16205558080"); // Zoom to PSTN default CPN
-                      setCdpn("+1234567890"); // Generic PSTN CDPN
-                    } else if (e.target.value === "CUCM") {
-                      setCpn("301001"); // CUCM to Zoom default CPN
-                      setCdpn("101001"); // Zoom extension CDPN
-                    } else if (e.target.value === "PSTN (ITSP)") {
-                      setCpn("+1234567890"); // Generic PSTN CPN
-                      setCdpn("+16205558080"); // PSTN to Zoom DID
-                    }
                   }}
                 >
                   <option value="Zoom Phone">Zoom Phone</option>
@@ -647,8 +655,6 @@ function App() {
             </h3>
             {visualFlowData ? (
               <div className="flex flex-row items-start space-x-4 overflow-x-auto p-4">
-                {" "}
-                {/* Changed to flex-row and added overflow-x-auto */}
                 {/* Originating Platform */}
                 <div className="flow-box bg-blue-200 border-blue-500 flex-shrink-0">
                   <p className="font-semibold text-blue-800">
@@ -661,8 +667,10 @@ function App() {
                     CDPN: {visualFlowData.initialCalledNumber}
                   </p>
                 </div>
+
                 {/* Incoming Arrow */}
                 <div className="flow-arrow flex-shrink-0">➡️ Incoming Call</div>
+
                 {/* CUBE Ingress DP */}
                 {visualFlowData.inboundDp && (
                   <div className="flow-box bg-blue-200 border-blue-500 flex-shrink-0">
@@ -687,10 +695,12 @@ function App() {
                     </p>
                   </div>
                 )}
+
                 {/* Processing Arrow */}
                 <div className="flow-arrow flex-shrink-0">
                   ➡️ CUBE Processing
                 </div>
+
                 {/* Translations Box */}
                 <div
                   className={`flow-box ${
@@ -722,8 +732,10 @@ function App() {
                     <p className="text-sm text-gray-600">CDPN: No change</p>
                   )}
                 </div>
+
                 {/* Outgoing Arrow */}
                 <div className="flow-arrow flex-shrink-0">➡️ Outgoing Call</div>
+
                 {/* CUBE Egress DP */}
                 {visualFlowData.outboundDp && (
                   <div className="flow-box bg-blue-200 border-blue-500 flex-shrink-0">
@@ -748,10 +760,12 @@ function App() {
                     </p>
                   </div>
                 )}
+
                 {/* Delivered Arrow */}
                 <div className="flow-arrow flex-shrink-0">
                   ✅ Call Delivered
                 </div>
+
                 {/* Destination Platform */}
                 <div className="flow-box bg-blue-200 border-blue-500 flex-shrink-0">
                   <p className="font-semibold text-blue-800">
@@ -764,6 +778,7 @@ function App() {
                     CDPN: {visualFlowData.finalCalledNumber}
                   </p>
                 </div>
+
                 {visualFlowData.error && (
                   <div className="flow-box bg-red-100 border-red-500 text-red-700 text-sm font-semibold flex-shrink-0">
                     ❌ Error: {visualFlowData.error}
